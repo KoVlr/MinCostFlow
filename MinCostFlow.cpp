@@ -1,11 +1,12 @@
 ﻿#include <iostream>
-#include "math.h"
 #include <list>
+#include <limits>
 #include <forward_list>
 #include <queue>
-#define INF INFINITY
 
 using namespace std;
+
+constexpr double inf = std::numeric_limits<double>::infinity();
 
 template<class T>
 void print_matrix(T **M, int N)
@@ -28,7 +29,7 @@ void print_matrix(T **M, int N)
 }
 
 
-int floyd_warshall(float **ShortestPath, int **Previous_on_SP, int N)
+int floyd_warshall(double **ShortestPath, int **Previous_on_SP, int N)
 {
 	//инициализация матрицы предыдущих вершин на кратчайших путях
 	for (int u = 0; u < N; u++)
@@ -45,7 +46,7 @@ int floyd_warshall(float **ShortestPath, int **Previous_on_SP, int N)
 		for (int u = 0; u < N; u++)
 		{
 			for (int v = 0; v < N; v++) {
-				float path_through_i = ShortestPath[u][i] + ShortestPath[i][v];
+				double path_through_i = ShortestPath[u][i] + ShortestPath[i][v];
 				if (path_through_i < ShortestPath[u][v])
 				{
 					ShortestPath[u][v] = path_through_i;
@@ -67,13 +68,13 @@ int floyd_warshall(float **ShortestPath, int **Previous_on_SP, int N)
 }
 
 
-list<int> find_negative_cycle(float **Graph, int N)
+list<int> find_negative_cycle(double **Graph, int N)
 {
 	//выделение памяти для матрицы кратчайших путей и матрицы предыдущих вершин на кратчайших путях
-	float **ShortestPath = new float*[N];
+	double **ShortestPath = new double*[N];
 	for (int i = 0; i < N; i++)
 	{
-		ShortestPath[i] = new float[N];
+		ShortestPath[i] = new double[N];
 	}
 
 	int **Previous_on_SP = new int*[N];
@@ -120,7 +121,7 @@ list<int> find_negative_cycle(float **Graph, int N)
 }
 
 
-forward_list<int> bread_first_search_path(float **Graph, int N, int from, int to)
+forward_list<int> bread_first_search_path(double **Graph, int N, int from, int to)
 {
 	queue<int> to_visit;
 	vector<bool> used(N, false);
@@ -133,7 +134,7 @@ forward_list<int> bread_first_search_path(float **Graph, int N, int from, int to
 		to_visit.pop();
 		for (int v = 0; v < N; v++)
 		{
-			if(Graph[u][v] != INF && Graph[u][v] != 0 && used[v] == false)
+			if(Graph[u][v] != inf && Graph[u][v] != 0 && used[v] == false)
 			{
 				previous_on_path[v] = u;
 				used[v] = true;
@@ -161,7 +162,7 @@ forward_list<int> bread_first_search_path(float **Graph, int N, int from, int to
 }
 
 
-void build_increment(float **Capacity, float **Flow, float **incrementCp, int N)
+void build_increment(double **Capacity, double **Flow, double **incrementCp, int N)
 {
 	for (int u = 0; u < N; u++)
 	{
@@ -184,12 +185,12 @@ void build_increment(float **Capacity, float **Flow, float **incrementCp, int N)
 }
 
 
-void find_max_flow(float **Capacity, float **Flow, int N)
+void find_max_flow(double **Capacity, double **Flow, int N)
 {
-	float **incrementCp = new float*[N];
+	double **incrementCp = new double*[N];
 	for (int i = 0; i < N; i++)
 	{
-		incrementCp[i] = new float[N];
+		incrementCp[i] = new double[N];
 	}
 
 	for (int u = 0; u < N; u++)
@@ -206,7 +207,7 @@ void find_max_flow(float **Capacity, float **Flow, int N)
 		forward_list<int> path = bread_first_search_path(incrementCp, N, 0, N-1);
 		if (path.empty()) break;
 
-		float delta = INF;
+		double delta = inf;
 		int path_start = path.front();
 		path.pop_front();
 		int u = path_start;
@@ -243,22 +244,22 @@ void find_max_flow(float **Capacity, float **Flow, int N)
 }
 
 
-void find_flow(float **Capacity, float **Flow, int N, float flow_value)
+void find_flow(double **Capacity, double **Flow, int N, double flow_value)
 {
 	find_max_flow(Capacity, Flow, N);
-	float max_flow_value = 0;
+	double max_flow_value = 0;
 	for (int v = 0; v < N; v++)
 	{
 		max_flow_value += Flow[0][v];
 	}
 
-	float over_flow_value = max_flow_value - flow_value;
+	double over_flow_value = max_flow_value - flow_value;
 	while(over_flow_value > 0)
 	{
 		forward_list<int> path = bread_first_search_path(Flow, N, 0, N-1);
 		int path_start = path.front();
 		path.pop_front();
-		float delta = over_flow_value;
+		double delta = over_flow_value;
 		int u = path_start;
 		for (const auto &v : path)
 		{
@@ -281,20 +282,20 @@ void find_flow(float **Capacity, float **Flow, int N, float flow_value)
 }
 
 
-void find_min_cost_flow(float **Capacity, float **Cost, float **Flow, int N, float flow_value) //алгоритм поиска потока минимальной стоимости
+void find_min_cost_flow(double **Capacity, double **Cost, double **Flow, int N, double flow_value) //алгоритм поиска потока минимальной стоимости
 {
 	find_flow(Capacity, Flow, N, flow_value);
 
-	float **incrementCp = new float*[N];
+	double **incrementCp = new double*[N];
 	for (int i = 0; i < N; i++)
 	{
-		incrementCp[i] = new float[N];
+		incrementCp[i] = new double[N];
 	}
 
-	float **incrementCost = new float*[N];
+	double **incrementCost = new double*[N];
 	for (int i = 0; i < N; i++)
 	{
-		incrementCost[i] = new float[N];
+		incrementCost[i] = new double[N];
 	}
 
 	while(true)
@@ -308,7 +309,7 @@ void find_min_cost_flow(float **Capacity, float **Cost, float **Flow, int N, flo
 			{
 				if (incrementCp[u][v] == 0) //если отсутствует дуга в инкрементальном графе
 				{
-					incrementCost[u][v] = (u==v ? 0 : INF);
+					incrementCost[u][v] = (u==v ? 0 : inf);
 				}
 				else if (Capacity[u][v] == 0)
 				{
@@ -327,7 +328,7 @@ void find_min_cost_flow(float **Capacity, float **Cost, float **Flow, int N, flo
 		if (negative_cycle.empty()) break;
 
 		//Перераспределение потоков
-		float delta = INF;
+		double delta = inf;
 		int u = negative_cycle.back();
 		for (const auto &v : negative_cycle)
 		{
@@ -366,7 +367,7 @@ int main()
 {
 	const int N = 7;
 
-	float Capacity[N][N] = //матрица пропускных способностей
+	double Capacity[N][N] = //матрица пропускных способностей
 	{ // 1, 2,  3,  4,  5,  6,  7
 		{0, 16, 0,  11, 0,  13, 0}, //1
 		{0, 0,  17, 18, 16, 0,  0}, //2
@@ -377,22 +378,22 @@ int main()
 		{0, 0,  0,  0,  0,  0,  0}  //7
 	};
 
-	float Cost[N][N] = //матрица стоимостей
+	double Cost[N][N] = //матрица стоимостей
 	{ // 1,   2,   3,   4,   5,   6,   7
-		{0,   7,   INF, 13,  INF, 28,  INF},//1
-		{INF, 0,   25,  4,   10,  INF, INF},//2
-		{INF, INF, 0,   INF, INF, INF, 5},  //3
-		{INF, INF, 6,   0,   INF, 5,   INF},//4
-		{INF, INF, INF, INF, 0,   INF, 12}, //5
-		{INF, INF, INF, INF, 3,   0,   7},  //6
-		{INF, INF, INF, INF, INF, INF, 0}   //7
+		{0,   7,   inf, 13,  inf, 28,  inf},//1
+		{inf, 0,   25,  4,   10,  inf, inf},//2
+		{inf, inf, 0,   inf, inf, inf, 5},  //3
+		{inf, inf, 6,   0,   inf, 5,   inf},//4
+		{inf, inf, inf, inf, 0,   inf, 12}, //5
+		{inf, inf, inf, inf, 3,   0,   7},  //6
+		{inf, inf, inf, inf, inf, inf, 0}   //7
 	};
 
-	float Flow[N][N]; //матрица потоков
+	double Flow[N][N]; //матрица потоков
 
-	float* pCapacity[N];
-	float* pCost[N];
-	float* pFlow[N];
+	double* pCapacity[N];
+	double* pCost[N];
+	double* pFlow[N];
 	for (int i = 0; i < N; i++)
 	{
 		pCapacity[i] = &Capacity[0][0] + i*N;

@@ -1,8 +1,12 @@
 ﻿#include <iostream>
+#include <fstream>
+#include <string>
+#include <sstream>
 #include <list>
 #include <limits>
 #include <forward_list>
 #include <queue>
+#include <map>
 
 using namespace std;
 
@@ -360,6 +364,32 @@ void find_min_cost_flow(double **Capacity, double **Cost, double **Flow, int N, 
 		delete[] incrementCost[i];
 	}
 	delete[] incrementCost;
+}
+
+
+//reads graph from file and represents it as map that associates edges with weights
+//the file must be in csv format
+//columns: the first vertex of the edge, the second vertex of the edge, weight
+template<class T> //T - type of graph weights
+map<pair<int,int>, T> read_graph(string filename)
+{
+	ifstream file(filename);
+	char delimiter = ',';
+	map<pair<int,int>, T> graph;
+	string line;
+	while(getline(file, line))
+	{
+		stringstream stream_line(line);
+		string u;
+		string v;
+		getline(stream_line, u, delimiter);
+		getline(stream_line, v, delimiter);
+		//only the edge weight remains in the stream_line
+		//and it is written to map
+		stream_line >> graph[{stoi(u), stoi(v)}];
+	}
+	file.close();
+	return graph;
 }
 
 

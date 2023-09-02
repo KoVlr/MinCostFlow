@@ -7,44 +7,83 @@
 #include <forward_list>
 #include <queue>
 #include <map>
+#include <vector>
+#include <set>
 
 using namespace std;
 
 constexpr double inf = std::numeric_limits<double>::infinity();
 
+template<class T> using graph = map<pair<int, int>, T>;
+
 template<class T>
-void print_matrix(T **M, int N)
+void print_graph(const graph<T> &G)
 {
-	cout << "\\\t";
-	for (int v = 0; v < N; v++)
+	cout << 'u' << '\t' << 'v' << '\t' << "weight" << '\n';
+	for (const auto &edge : G)
 	{
-		cout << v+1 << '\t';
-	}
-	cout << '\n';
-	for (int u = 0; u < N; u++)
-	{
-		cout << u+1 << '\t';
-		for (int v = 0; v < N; v++)
-		{
-			cout << M[u][v] << '\t';
-		}
-		cout << '\n';
+		cout << edge.first.first << '\t' << edge.first.second << '\t' << edge.second << '\n';
 	}
 }
 
 
-int floyd_warshall(double **ShortestPath, int **Previous_on_SP, int N)
+template <class T>
+int vertexes_number(const graph<T> &G)
 {
-	//инициализация матрицы предыдущих вершин на кратчайших путях
+	int max_v = -1;
+	for (const auto &edge : G)
+	{
+		if (edge.first.first > max_v) max_v = edge.first.first;
+		if (edge.first.second > max_v) max_v = edge.first.second;
+	}
+	return max_v + 1;
+}
+
+
+template<class T>
+vector<vector<T>> get_graph_matrix(const graph<T> &G, T diagonal_elem, T non_edge_elem)
+{
+	int N = vertexes_number(G);
+
+	vector<vector<T>> graph_matrix(N);
+	
 	for (int u = 0; u < N; u++)
 	{
 		for (int v = 0; v < N; v++)
 		{
-			Previous_on_SP[u][v] = u;
+			if (u==v) graph_matrix[u].push_back(diagonal_elem);
+			else graph_matrix[u].push_back(non_edge_elem);
 		}
 	}
 
-	//Нахождение кратчайших путей
+	for (const auto &edge : G)
+	{
+		int u = edge.first.first;
+		int v = edge.first.second;
+		T weight = edge.second;
+		graph_matrix[u][v] = weight;
+	}
+
+	return graph_matrix;
+}
+
+
+int floyd_warshall(vector<vector<double>> &ShortestPath, vector<vector<int>> &Previous_on_SP)
+{
+	int N = ShortestPath.size();
+
+	//initialization of matrix of previous vertexes on shortest path
+	Previous_on_SP.clear();
+	Previous_on_SP.resize(N);
+	for (int u = 0; u < N; u++)
+	{
+		for (int v = 0; v < N; v++)
+		{
+			Previous_on_SP[u].push_back(u);
+		}
+	}
+
+	//find shortest paths
 	for (int i = 0; i < N; i++)
 	{
 		for (int u = 0; u < N; u++)
@@ -59,7 +98,7 @@ int floyd_warshall(double **ShortestPath, int **Previous_on_SP, int N)
 			}
 		}
 
-		//проверка на наличие отрицательного цикла
+		//check negative cicle
 		for (int j = 0; j < N; j++)
 		{
 			if (ShortestPath[j][j] < 0)
@@ -72,31 +111,11 @@ int floyd_warshall(double **ShortestPath, int **Previous_on_SP, int N)
 }
 
 
-list<int> find_negative_cycle(double **Graph, int N)
+list<int> find_negative_cycle(const graph<double> &G)
 {
-	//выделение памяти для матрицы кратчайших путей и матрицы предыдущих вершин на кратчайших путях
-	double **ShortestPath = new double*[N];
-	for (int i = 0; i < N; i++)
-	{
-		ShortestPath[i] = new double[N];
-	}
-
-	int **Previous_on_SP = new int*[N];
-	for (int i = 0; i < N; i++)
-	{
-		Previous_on_SP[i] = new int[N];
-	}
-
-	//инициализация матрицы кратчайших путей
-	for (int u = 0; u < N; u++)
-	{
-		for (int v = 0; v < N; v++)
-		{
-			ShortestPath[u][v] = Graph[u][v];
-		}
-	}
-
-	int v_in_negative_cycle = floyd_warshall(ShortestPath, Previous_on_SP, N);
+	vector<vector<double>> ShortestPath = get_graph_matrix<double>(G, 0, inf);
+	vector<vector<int>> Previous_on_SP;
+	int v_in_negative_cycle = floyd_warshall(ShortestPath, Previous_on_SP);
 	list<int> negative_cycle;
 	if (v_in_negative_cycle != -1)
 	{
@@ -107,26 +126,13 @@ list<int> find_negative_cycle(double **Graph, int N)
 			u = Previous_on_SP[v_in_negative_cycle][u];
 		} while(u != v_in_negative_cycle);
 	}
-
-	//освобождение памяти
-	for (int i = 0; i < N; i++)
-	{
-		delete[] ShortestPath[i];
-	}
-	delete[] ShortestPath;
-
-	for (int i = 0; i < N; i++)
-	{
-		delete[] Previous_on_SP[i];
-	}
-	delete[] Previous_on_SP;
-
 	return negative_cycle;
 }
 
-
-forward_list<int> bread_first_search_path(double **Graph, int N, int from, int to)
+template <class T>
+forward_list<int> bread_first_search_path(const graph<T> &G, int from, int to)
 {
+	int N = vertexes_number(G);
 	queue<int> to_visit;
 	vector<bool> used(N, false);
 	vector<int> previous_on_path(N, -1);
@@ -138,7 +144,7 @@ forward_list<int> bread_first_search_path(double **Graph, int N, int from, int t
 		to_visit.pop();
 		for (int v = 0; v < N; v++)
 		{
-			if(Graph[u][v] != inf && Graph[u][v] != 0 && used[v] == false)
+			if(used[v] == false && G.find({u,v}) != G.end())
 			{
 				previous_on_path[v] = u;
 				used[v] = true;
@@ -151,7 +157,6 @@ forward_list<int> bread_first_search_path(double **Graph, int N, int from, int t
 			}
 		}
 	}
-
 	forward_list<int> path;
 	if(used[to] == true)
 	{
@@ -165,111 +170,125 @@ forward_list<int> bread_first_search_path(double **Graph, int N, int from, int t
 	return path;
 }
 
-
-void build_increment(double **Capacity, double **Flow, double **incrementCp, int N)
+template <class T>
+graph<T> build_increment(const graph<T> &Capacity, const graph<T> &Flow)
 {
-	for (int u = 0; u < N; u++)
+	graph<T> incrementCp;
+	for (const auto &edge : Capacity)
 	{
-		for (int v = 0; v < N; v++)
+		int u = edge.first.first;
+		int v = edge.first.second;
+		T capacity = edge.second;
+		if (Flow.at({u,v}) < capacity)
 		{
-			if (Flow[u][v] < Capacity[u][v])
-			{
-				incrementCp[u][v] = Capacity[u][v] - Flow[u][v];
-			}
-			else if (Flow[v][u] > 0)
-			{
-				incrementCp[u][v] = Flow[v][u];
-			}
-			else
-			{
-				incrementCp[u][v] = 0;
-			}
+			incrementCp[{u,v}] = capacity - Flow.at({u,v});
+		}
+		if (Flow.at({u,v}) > 0)
+		{
+			incrementCp[{v,u}] = Flow.at({u,v});
 		}
 	}
+	return incrementCp;
 }
 
 
-void find_max_flow(double **Capacity, double **Flow, int N)
+template <class T>
+graph<T> find_max_flow(const graph<T> &Capacity)
 {
-	double **incrementCp = new double*[N];
-	for (int i = 0; i < N; i++)
+	graph<T> Flow;
+	int N = vertexes_number(Capacity);
+	for (const auto &edge : Capacity)
 	{
-		incrementCp[i] = new double[N];
-	}
-
-	for (int u = 0; u < N; u++)
-	{
-		for (int v = 0; v < N; v++)
-		{
-			Flow[u][v] = 0;
-		}
+		int u = edge.first.first;
+		int v = edge.first.second;
+		Flow[{u,v}] = 0;
 	}
 
 	while (true)
 	{
-		build_increment(Capacity, Flow, incrementCp, N);
-		forward_list<int> path = bread_first_search_path(incrementCp, N, 0, N-1);
+		graph<T> incrementCp = build_increment<T>(Capacity, Flow);
+		forward_list<int> path = bread_first_search_path<T>(incrementCp, 0, N-1);
 		if (path.empty()) break;
 
-		double delta = inf;
-		int path_start = path.front();
+		//pop first two path items to initialize delta
+		int path_first_elem = path.front();
 		path.pop_front();
-		int u = path_start;
+		int path_second_elem = path.front();
+		path.pop_front();
+		T delta = incrementCp[{path_first_elem, path_second_elem}];
+		//loop over the remaining pairs of vertexes of the path
+		int u = path_second_elem;
 		for (const auto &v : path)
 		{
-			if(incrementCp[u][v] < delta)
+			if(incrementCp[{u,v}] < delta)
 			{
-				delta = incrementCp[u][v];
+				delta = incrementCp[{u,v}];
 			}
 			u = v;
 		}
+		path.push_front(path_second_elem);
 
-		u = path_start;
+		u = path_first_elem;
 		for (const auto &v : path)
 		{
-			if(Capacity[u][v] != 0)
+			if(Capacity.find({u,v}) != Capacity.end())
 			{
-				Flow[u][v] += delta;
+				Flow[{u,v}] += delta;
 			}
 			else
 			{
-				Flow[v][u] -= delta;
+				Flow[{v,u}] -= delta;
 			}
 			u = v;
 		}
 	}
-
-	//Освобождение памяти
-	for (int i = 0; i < N; i++)
-	{
-		delete[] incrementCp[i];
-	}
-	delete[] incrementCp;
+	return Flow;
 }
 
-
-void find_flow(double **Capacity, double **Flow, int N, double flow_value)
+template<class T>
+graph<T> get_positive_flow(const graph<T> &Flow)
 {
-	find_max_flow(Capacity, Flow, N);
-	double max_flow_value = 0;
+	graph<T> Positive_flow;
+	for (const auto &edge : Flow)
+	{
+		T flow = edge.second;
+		if (flow > 0)
+		{
+			int u = edge.first.first;
+			int v = edge.first.second;
+			Positive_flow[{u,v}] = flow;
+		}
+	}
+	return Positive_flow;
+}
+
+template<class T>
+graph<T> find_flow(const graph<T> &Capacity, T flow_value)
+{
+	graph<T> Flow = find_max_flow<T>(Capacity);
+	T max_flow_value = 0;
+	int N = vertexes_number(Capacity);
 	for (int v = 0; v < N; v++)
 	{
-		max_flow_value += Flow[0][v];
+		if (Flow.find({0,v}) != Flow.end())
+		{
+			max_flow_value += Flow[{0,v}];
+		}
 	}
 
-	double over_flow_value = max_flow_value - flow_value;
+	T over_flow_value = max_flow_value - flow_value;
 	while(over_flow_value > 0)
 	{
-		forward_list<int> path = bread_first_search_path(Flow, N, 0, N-1);
+		forward_list<int> path = bread_first_search_path<T>(get_positive_flow<T>(Flow), 0, N-1);
 		int path_start = path.front();
 		path.pop_front();
-		double delta = over_flow_value;
+		T delta = over_flow_value;
 		int u = path_start;
 		for (const auto &v : path)
 		{
-			if (Flow[u][v] < delta)
+			if (Flow[{u,v}] < delta)
 			{
-				delta = Flow[u][v];
+				delta = Flow[{u,v}];
 			}
 			u = v;
 		}
@@ -277,93 +296,64 @@ void find_flow(double **Capacity, double **Flow, int N, double flow_value)
 		u = path_start;
 		for (const auto &v : path)
 		{
-			Flow[u][v] -= delta;
+			Flow[{u,v}] -= delta;
 			u = v;
 		}
-
 		over_flow_value -= delta;
 	}
+	return Flow;
 }
 
 
-void find_min_cost_flow(double **Capacity, double **Cost, double **Flow, int N, double flow_value) //алгоритм поиска потока минимальной стоимости
+graph<double> find_min_cost_flow(const graph<double> &Capacity, const graph<double> &Cost, double flow_value)
 {
-	find_flow(Capacity, Flow, N, flow_value);
-
-	double **incrementCp = new double*[N];
-	for (int i = 0; i < N; i++)
-	{
-		incrementCp[i] = new double[N];
-	}
-
-	double **incrementCost = new double*[N];
-	for (int i = 0; i < N; i++)
-	{
-		incrementCost[i] = new double[N];
-	}
+	graph<double> Flow = find_flow<double>(Capacity, flow_value);
 
 	while(true)
 	{
-		build_increment(Capacity, Flow, incrementCp, N);
+		graph<double> incrementCp = build_increment<double>(Capacity, Flow);
+		graph<double> incrementCost;
 
-		//определение стоимостей дуг инкрементального графа
-		for (int u = 0; u < N; u++)
+		//build increment cost graph
+		for(const auto &edge : incrementCp)
 		{
-			for (int v = 0; v < N; v++)
+			int u = edge.first.first;
+			int v = edge.first.second;
+			if(Capacity.find({u,v}) != Capacity.end())
 			{
-				if (incrementCp[u][v] == 0) //если отсутствует дуга в инкрементальном графе
-				{
-					incrementCost[u][v] = (u==v ? 0 : inf);
-				}
-				else if (Capacity[u][v] == 0)
-				{
-					incrementCost[u][v] = -Cost[v][u];
-				}
-				else
-				{
-					incrementCost[u][v] = Cost[u][v];
-				}
+				incrementCost[{u,v}] = Cost.at({u,v});
+			}
+			else
+			{
+				incrementCost[{u,v}] = -Cost.at({v,u});
 			}
 		}
 
-		//Нахождение отрицательного цикла
-		list<int> negative_cycle = list<int>(find_negative_cycle(incrementCost, N));
-
+		list<int> negative_cycle = list<int>(find_negative_cycle(incrementCost));
 		if (negative_cycle.empty()) break;
 
-		//Перераспределение потоков
+		//find delta
 		double delta = inf;
 		int u = negative_cycle.back();
 		for (const auto &v : negative_cycle)
 		{
-			if (incrementCp[u][v] < delta) 
+			if (incrementCp[{u,v}] < delta) 
 			{
-				delta = incrementCp[u][v];
+				delta = incrementCp[{u,v}];
 			}
 			u = v;
 		}
 
+		//change Flow
 		u = negative_cycle.back();
 		for (const auto &v : negative_cycle)
 		{
-			if(incrementCost[u][v] < 0) Flow[v][u] -= delta;
-			else if (incrementCost[u][v] > 0) Flow[u][v] += delta;
+			if(incrementCost[{u,v}] < 0) Flow[{v,u}] -= delta;
+			else if (incrementCost[{u,v}] > 0) Flow[{u,v}] += delta;
 			u = v;
 		}
 	}
-
-	//Освобождение памяти
-	for (int i = 0; i < N; i++)
-	{
-		delete[] incrementCp[i];
-	}
-	delete[] incrementCp;
-
-	for (int i = 0; i < N; i++)
-	{
-		delete[] incrementCost[i];
-	}
-	delete[] incrementCost;
+	return Flow;
 }
 
 
@@ -371,11 +361,11 @@ void find_min_cost_flow(double **Capacity, double **Cost, double **Flow, int N, 
 //the file must be in csv format
 //columns: the first vertex of the edge, the second vertex of the edge, weight
 template<class T> //T - type of graph weights
-map<pair<int,int>, T> read_graph(string filename)
+graph<T> read_graph(string filename)
 {
 	ifstream file(filename);
 	char delimiter = ',';
-	map<pair<int,int>, T> graph;
+	graph<T> G;
 	string line;
 	while(getline(file, line))
 	{
@@ -386,52 +376,31 @@ map<pair<int,int>, T> read_graph(string filename)
 		getline(stream_line, v, delimiter);
 		//only the edge weight remains in the stream_line
 		//and it is written to map
-		stream_line >> graph[{stoi(u), stoi(v)}];
+		stream_line >> G[{stoi(u), stoi(v)}];
 	}
 	file.close();
-	return graph;
+	return G;
 }
 
+double calculate_cost(const graph<double> &Cost, const graph<double> &Flow)
+{
+	double cost = 0;
+	for (const auto &edge : Flow)
+	{
+		int u = edge.first.first;
+		int v = edge.first.second;
+		double flow = edge.second;
+		cost += flow * Cost.at({u,v});
+	}
+	return cost;
+}
 
 int main()
 {
-	const int N = 7;
-
-	double Capacity[N][N] = //матрица пропускных способностей
-	{ // 1, 2,  3,  4,  5,  6,  7
-		{0, 16, 0,  11, 0,  13, 0}, //1
-		{0, 0,  17, 18, 16, 0,  0}, //2
-		{0, 0,  0,  0,  0,  0,  22},//3
-		{0, 0,  12, 0,  0,  19, 0}, //4
-		{0, 0,  0,  0,  0,  0,  16},//5
-		{0, 0,  0,  0,  10, 0,  5}, //6
-		{0, 0,  0,  0,  0,  0,  0}  //7
-	};
-
-	double Cost[N][N] = //матрица стоимостей
-	{ // 1,   2,   3,   4,   5,   6,   7
-		{0,   7,   inf, 13,  inf, 28,  inf},//1
-		{inf, 0,   25,  4,   10,  inf, inf},//2
-		{inf, inf, 0,   inf, inf, inf, 5},  //3
-		{inf, inf, 6,   0,   inf, 5,   inf},//4
-		{inf, inf, inf, inf, 0,   inf, 12}, //5
-		{inf, inf, inf, inf, 3,   0,   7},  //6
-		{inf, inf, inf, inf, inf, inf, 0}   //7
-	};
-
-	double Flow[N][N]; //матрица потоков
-
-	double* pCapacity[N];
-	double* pCost[N];
-	double* pFlow[N];
-	for (int i = 0; i < N; i++)
-	{
-		pCapacity[i] = &Capacity[0][0] + i*N;
-		pCost[i] = &Cost[0][0] + i*N;
-		pFlow[i] = &Flow[0][0] + i*N;
-	}
-
-	find_min_cost_flow(pCapacity, pCost, pFlow, N, 20);
-	print_matrix(pFlow, N);
+	graph<double> Capacity = read_graph<double>("Capacity.csv");
+	graph<double> Cost = read_graph<double>("Cost.csv");
+	graph<double> Flow = find_min_cost_flow(Capacity, Cost, 20);
+	print_graph(Flow);
+	cout << calculate_cost(Cost, Flow);
 	return 0;
 }

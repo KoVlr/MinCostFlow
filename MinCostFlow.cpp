@@ -14,24 +14,147 @@ using namespace std;
 
 constexpr double inf = std::numeric_limits<double>::infinity();
 
-template<class T> using graph = map<pair<int, int>, T>;
 
-template<class T>
-void print_graph(const graph<T> &G)
+//Exception thrown when trying to apply Floyd-Warshall algorithm to a graph with a negative cycle
+class negative_cycle_exception : public exception
 {
-	cout << 'u' << '\t' << 'v' << '\t' << "weight" << '\n';
-	for (const auto &edge : G)
-	{
-		cout << edge.first.first << '\t' << edge.first.second << '\t' << edge.second << '\n';
-	}
+	public:
+		negative_cycle_exception(int v_in_negative_cycle, vector<vector<int>> Previous_on_SP);
+		const char* what() const noexcept override;
+		int get_v_in_negative_cycle() const;
+		const vector<vector<int>>& get_Previous_on_SP() const;
+	private:
+		int v_in_negative_cycle; //some vertex included in a negative cycle
+		const vector<vector<int>> Previous_on_SP; //matrix of previous vertexes at the moment of detection a negative cycle
+};
+
+negative_cycle_exception::negative_cycle_exception
+(
+	int v_in_negative_cycle,
+	vector<vector<int>> Previous_on_SP
+): v_in_negative_cycle(v_in_negative_cycle), Previous_on_SP(Previous_on_SP)
+{}
+
+const char* negative_cycle_exception::what() const noexcept
+{
+	return "Graph contains a cycle with negative weight";
+}
+
+int negative_cycle_exception::get_v_in_negative_cycle() const
+{
+	return v_in_negative_cycle;
+}
+
+const vector<vector<int>>& negative_cycle_exception::get_Previous_on_SP() const
+{
+	return Previous_on_SP;
 }
 
 
-template <class T>
-int vertexes_number(const graph<T> &G)
+template<class T>
+class Graph
+{
+	public:
+		Graph(){}
+		Graph(string filename);
+		map<pair<int, int>, T>& get_edges();
+		const map<pair<int, int>, T>& get_edges() const;
+		string get_str() const; //listing graph edges as a string
+		vector<vector<T>> get_matrix(T diagonal_elem, T non_edge_elem) const; //representation of a graph as a matrix
+		pair<vector<vector<T>>, vector<vector<int>>> floyd_warshall(T infinity) const;
+		list<int> find_negative_cycle(T infinity) const;
+		forward_list<int> bread_first_search_path(int from, int to) const;
+		int number_of_vertexes() const;
+	private:
+		map<pair<int, int>, T> edges;
+};
+
+template<class T>
+class Network
+{
+	public:
+		Network() {}
+		Network(Graph<T>& Capacity);
+		T calculate_flow_value() const;
+		void make_max_flow();
+		void make_flow(T flow_value);
+		const Graph<T>& get_Capacity() const;
+		Graph<T>& get_Flow();
+		const Graph<T>& get_Flow() const;
+	protected:
+		const Graph<T> Capacity;
+		Graph<T> Flow;
+		Graph<T> build_increment() const;
+		Graph<T> get_positive_flow() const; //return a graph that contains only positive edges of Flow
+};
+
+template<class T>
+class CostedNetwork: public Network<T>
+{
+	public:
+		CostedNetwork(Graph<T>& Capcity, Graph<T>& Cost);
+		T calculate_cost() const;
+		void minimize_cost(); // minimizes cost without changing flow value
+		const Graph<T>& get_Cost() const;
+	private:
+		const Graph<T> Cost;
+		Graph<T> build_cost_increment() const;
+};
+
+template<class T>
+Graph<T>::Graph(string filename)
+{
+	ifstream file(filename);
+	char delimiter = ',';
+	string line;
+	getline(file, line); //reading csv file header
+	while(getline(file, line))
+	{
+		stringstream stream_line(line);
+		string u;
+		string v;
+		getline(stream_line, u, delimiter);
+		getline(stream_line, v, delimiter);
+		//only the edge weight remains in the stream_line
+		//and it is written to map
+		stream_line >> edges[{stoi(u), stoi(v)}];
+	}
+	file.close();
+}
+
+
+template<class T>
+map<pair<int, int>, T>& Graph<T>::get_edges()
+{
+	return edges;
+}
+
+
+template<class T>
+const map<pair<int, int>, T>& Graph<T>::get_edges() const
+{
+	return edges;
+}
+
+
+template<class T>
+string Graph<T>::get_str() const
+{
+	stringstream output;
+	output << "u,v,weight" << '\n';
+	for (const auto &edge : edges)
+	{
+		output << edge.first.first << ',' << edge.first.second << ',' << edge.second << '\n';
+	}
+	return output.str();
+}
+
+
+template<class T>
+int Graph<T>::number_of_vertexes() const
 {
 	int max_v = -1;
-	for (const auto &edge : G)
+	for (const auto &edge : edges)
 	{
 		if (edge.first.first > max_v) max_v = edge.first.first;
 		if (edge.first.second > max_v) max_v = edge.first.second;
@@ -41,9 +164,9 @@ int vertexes_number(const graph<T> &G)
 
 
 template<class T>
-vector<vector<T>> get_graph_matrix(const graph<T> &G, T diagonal_elem, T non_edge_elem)
+vector<vector<T>>  Graph<T>::get_matrix(T diagonal_elem, T non_edge_elem) const
 {
-	int N = vertexes_number(G);
+	int N = number_of_vertexes();
 
 	vector<vector<T>> graph_matrix(N);
 	
@@ -56,7 +179,7 @@ vector<vector<T>> get_graph_matrix(const graph<T> &G, T diagonal_elem, T non_edg
 		}
 	}
 
-	for (const auto &edge : G)
+	for (const auto &edge : edges)
 	{
 		int u = edge.first.first;
 		int v = edge.first.second;
@@ -68,13 +191,13 @@ vector<vector<T>> get_graph_matrix(const graph<T> &G, T diagonal_elem, T non_edg
 }
 
 
-int floyd_warshall(vector<vector<double>> &ShortestPath, vector<vector<int>> &Previous_on_SP)
+template<class T>
+pair<vector<vector<T>>, vector<vector<int>>> Graph<T>::floyd_warshall(T infinity) const
 {
-	int N = ShortestPath.size();
-
+	int N = number_of_vertexes();
+	vector<vector<T>> ShortestPath = get_matrix(0, infinity);
+	vector<vector<int>> Previous_on_SP(N);
 	//initialization of matrix of previous vertexes on shortest path
-	Previous_on_SP.clear();
-	Previous_on_SP.resize(N);
 	for (int u = 0; u < N; u++)
 	{
 		for (int v = 0; v < N; v++)
@@ -88,9 +211,11 @@ int floyd_warshall(vector<vector<double>> &ShortestPath, vector<vector<int>> &Pr
 	{
 		for (int u = 0; u < N; u++)
 		{
+			if (ShortestPath[u][i] == infinity) continue;
 			for (int v = 0; v < N; v++) {
+				if(ShortestPath[i][v] == infinity) continue;
 				double path_through_i = ShortestPath[u][i] + ShortestPath[i][v];
-				if (path_through_i < ShortestPath[u][v])
+				if (ShortestPath[u][v] == infinity || path_through_i < ShortestPath[u][v])
 				{
 					ShortestPath[u][v] = path_through_i;
 					Previous_on_SP[u][v] = Previous_on_SP[i][v];
@@ -103,36 +228,39 @@ int floyd_warshall(vector<vector<double>> &ShortestPath, vector<vector<int>> &Pr
 		{
 			if (ShortestPath[j][j] < 0)
 			{
-				return j;
+				throw negative_cycle_exception(j, Previous_on_SP);
 			}
 		}
 	}
-	return -1;
+	return pair<vector<vector<T>>, vector<vector<int>>>(ShortestPath, Previous_on_SP);
 }
 
 
-list<int> find_negative_cycle(const graph<double> &G)
+template<class T>
+list<int> Graph<T>::find_negative_cycle(T infinity) const
 {
-	vector<vector<double>> ShortestPath = get_graph_matrix<double>(G, 0, inf);
-	vector<vector<int>> Previous_on_SP;
-	int v_in_negative_cycle = floyd_warshall(ShortestPath, Previous_on_SP);
 	list<int> negative_cycle;
-	if (v_in_negative_cycle != -1)
+	try
 	{
-		int u = v_in_negative_cycle;
+		floyd_warshall(infinity);
+	}
+	catch(negative_cycle_exception& e)
+	{
+		int u = e.get_v_in_negative_cycle();
 		do
 		{
 			negative_cycle.push_front(u);
-			u = Previous_on_SP[v_in_negative_cycle][u];
-		} while(u != v_in_negative_cycle);
+			u = e.get_Previous_on_SP()[e.get_v_in_negative_cycle()][u];
+		} while(u != e.get_v_in_negative_cycle());
 	}
 	return negative_cycle;
 }
 
-template <class T>
-forward_list<int> bread_first_search_path(const graph<T> &G, int from, int to)
+
+template<class T>
+forward_list<int> Graph<T>::bread_first_search_path(int from, int to) const
 {
-	int N = vertexes_number(G);
+	int N = number_of_vertexes();
 	queue<int> to_visit;
 	vector<bool> used(N, false);
 	vector<int> previous_on_path(N, -1);
@@ -144,7 +272,7 @@ forward_list<int> bread_first_search_path(const graph<T> &G, int from, int to)
 		to_visit.pop();
 		for (int v = 0; v < N; v++)
 		{
-			if(used[v] == false && G.find({u,v}) != G.end())
+			if(used[v] == false && edges.find({u,v}) != edges.end())
 			{
 				previous_on_path[v] = u;
 				used[v] = true;
@@ -170,44 +298,54 @@ forward_list<int> bread_first_search_path(const graph<T> &G, int from, int to)
 	return path;
 }
 
-template <class T>
-graph<T> build_increment(const graph<T> &Capacity, const graph<T> &Flow)
+
+template<class T>
+Network<T>::Network(Graph<T>& Capacity) : Capacity(Capacity)
 {
-	graph<T> incrementCp;
-	for (const auto &edge : Capacity)
+	for(const auto& edge : Capacity.get_edges())
+	{
+		Flow.get_edges()[{edge.first.first, edge.first.second}] = 0;
+	}
+}
+
+
+template<class T>
+Graph<T> Network<T>::build_increment() const
+{
+	Graph<T> incrementCp;
+	for (const auto &edge : Capacity.get_edges())
 	{
 		int u = edge.first.first;
 		int v = edge.first.second;
 		T capacity = edge.second;
-		if (Flow.at({u,v}) < capacity)
+		if (Flow.get_edges().at({u,v}) < capacity)
 		{
-			incrementCp[{u,v}] = capacity - Flow.at({u,v});
+			incrementCp.get_edges()[{u,v}] = capacity - Flow.get_edges().at({u,v});
 		}
-		if (Flow.at({u,v}) > 0)
+		if (Flow.get_edges().at({u,v}) > 0)
 		{
-			incrementCp[{v,u}] = Flow.at({u,v});
+			incrementCp.get_edges()[{v,u}] = Flow.get_edges().at({u,v});
 		}
 	}
 	return incrementCp;
 }
 
 
-template <class T>
-graph<T> find_max_flow(const graph<T> &Capacity)
+template<class T>
+void Network<T>::make_max_flow()
 {
-	graph<T> Flow;
-	int N = vertexes_number(Capacity);
-	for (const auto &edge : Capacity)
+	int N = Capacity.number_of_vertexes();
+	for (const auto &edge : Capacity.get_edges())
 	{
 		int u = edge.first.first;
 		int v = edge.first.second;
-		Flow[{u,v}] = 0;
+		Flow.get_edges()[{u,v}] = 0;
 	}
 
 	while (true)
 	{
-		graph<T> incrementCp = build_increment<T>(Capacity, Flow);
-		forward_list<int> path = bread_first_search_path<T>(incrementCp, 0, N-1);
+		Graph<T> incrementCp = build_increment();
+		forward_list<int> path = incrementCp.bread_first_search_path(0, N-1);
 		if (path.empty()) break;
 
 		//pop first two path items to initialize delta
@@ -215,14 +353,14 @@ graph<T> find_max_flow(const graph<T> &Capacity)
 		path.pop_front();
 		int path_second_elem = path.front();
 		path.pop_front();
-		T delta = incrementCp[{path_first_elem, path_second_elem}];
+		T delta = incrementCp.get_edges()[{path_first_elem, path_second_elem}];
 		//loop over the remaining pairs of vertexes of the path
 		int u = path_second_elem;
 		for (const auto &v : path)
 		{
-			if(incrementCp[{u,v}] < delta)
+			if(incrementCp.get_edges()[{u,v}] < delta)
 			{
-				delta = incrementCp[{u,v}];
+				delta = incrementCp.get_edges()[{u,v}];
 			}
 			u = v;
 		}
@@ -231,64 +369,73 @@ graph<T> find_max_flow(const graph<T> &Capacity)
 		u = path_first_elem;
 		for (const auto &v : path)
 		{
-			if(Capacity.find({u,v}) != Capacity.end())
+			if(Capacity.get_edges().find({u,v}) != Capacity.get_edges().end())
 			{
-				Flow[{u,v}] += delta;
+				Flow.get_edges()[{u,v}] += delta;
 			}
 			else
 			{
-				Flow[{v,u}] -= delta;
+				Flow.get_edges()[{v,u}] -= delta;
 			}
 			u = v;
 		}
 	}
-	return Flow;
 }
 
+
 template<class T>
-graph<T> get_positive_flow(const graph<T> &Flow)
+Graph<T> Network<T>::get_positive_flow() const
 {
-	graph<T> Positive_flow;
-	for (const auto &edge : Flow)
+	Graph<T> Positive_flow;
+	for (const auto &edge : Flow.get_edges())
 	{
 		T flow = edge.second;
 		if (flow > 0)
 		{
 			int u = edge.first.first;
 			int v = edge.first.second;
-			Positive_flow[{u,v}] = flow;
+			Positive_flow.get_edges()[{u,v}] = flow;
 		}
 	}
 	return Positive_flow;
 }
 
+
 template<class T>
-graph<T> find_flow(const graph<T> &Capacity, T flow_value)
+T Network<T>::calculate_flow_value() const
 {
-	graph<T> Flow = find_max_flow<T>(Capacity);
-	T max_flow_value = 0;
-	int N = vertexes_number(Capacity);
+	T flow_value = 0;
+	int N = Capacity.number_of_vertexes();
 	for (int v = 0; v < N; v++)
 	{
-		if (Flow.find({0,v}) != Flow.end())
+		if (Flow.get_edges().find({0,v}) != Flow.get_edges().end())
 		{
-			max_flow_value += Flow[{0,v}];
+			flow_value += Flow.get_edges().at({0,v});
 		}
 	}
+	return flow_value;
+}
 
+
+template<class T>
+void Network<T>::make_flow(T flow_value)
+{
+	int N = Capacity.number_of_vertexes();
+	make_max_flow();
+	T max_flow_value = calculate_flow_value();
 	T over_flow_value = max_flow_value - flow_value;
 	while(over_flow_value > 0)
 	{
-		forward_list<int> path = bread_first_search_path<T>(get_positive_flow<T>(Flow), 0, N-1);
+		forward_list<int> path = get_positive_flow().bread_first_search_path(0, N-1);
 		int path_start = path.front();
 		path.pop_front();
 		T delta = over_flow_value;
 		int u = path_start;
 		for (const auto &v : path)
 		{
-			if (Flow[{u,v}] < delta)
+			if (Flow.get_edges()[{u,v}] < delta)
 			{
-				delta = Flow[{u,v}];
+				delta = Flow.get_edges()[{u,v}];
 			}
 			u = v;
 		}
@@ -296,50 +443,81 @@ graph<T> find_flow(const graph<T> &Capacity, T flow_value)
 		u = path_start;
 		for (const auto &v : path)
 		{
-			Flow[{u,v}] -= delta;
+			Flow.get_edges()[{u,v}] -= delta;
 			u = v;
 		}
 		over_flow_value -= delta;
 	}
+}
+
+
+template<class T>
+const Graph<T>& Network<T>::get_Capacity() const
+{
+	return Capacity;
+}
+
+
+template<class T>
+Graph<T>& Network<T>::get_Flow()
+{
 	return Flow;
 }
 
 
-graph<double> find_min_cost_flow(const graph<double> &Capacity, const graph<double> &Cost, double flow_value)
+template<class T>
+const Graph<T>& Network<T>::get_Flow() const
 {
-	graph<double> Flow = find_flow<double>(Capacity, flow_value);
+	return Flow;
+}
 
+
+template<class T>
+CostedNetwork<T>::CostedNetwork(Graph<T>& Capacity, Graph<T>& Cost): Network<T>(Capacity), Cost(Cost)
+{}
+
+
+template<class T>
+Graph<T> CostedNetwork<T>::build_cost_increment() const
+{
+	Graph<T> incrementCost;
+	for (const auto &edge : this->Capacity.get_edges())
+	{
+		int u = edge.first.first;
+		int v = edge.first.second;
+		T capacity = edge.second;
+		if (this->Flow.get_edges().at({u,v}) < capacity)
+		{
+			incrementCost.get_edges()[{u,v}] = Cost.get_edges().at({u,v});
+		}
+		if (this->Flow.get_edges().at({u,v}) > 0)
+		{
+			incrementCost.get_edges()[{v,u}] = -Cost.get_edges().at({u,v});
+		}
+	}
+	return incrementCost;
+}
+
+
+template<class T>
+void CostedNetwork<T>::minimize_cost()
+{
 	while(true)
 	{
-		graph<double> incrementCp = build_increment<double>(Capacity, Flow);
-		graph<double> incrementCost;
+		Graph<T> incrementCp = this->build_increment();
+		Graph<T> incrementCost = build_cost_increment();
 
-		//build increment cost graph
-		for(const auto &edge : incrementCp)
-		{
-			int u = edge.first.first;
-			int v = edge.first.second;
-			if(Capacity.find({u,v}) != Capacity.end())
-			{
-				incrementCost[{u,v}] = Cost.at({u,v});
-			}
-			else
-			{
-				incrementCost[{u,v}] = -Cost.at({v,u});
-			}
-		}
-
-		list<int> negative_cycle = list<int>(find_negative_cycle(incrementCost));
+		list<int> negative_cycle = incrementCost.find_negative_cycle(inf);
 		if (negative_cycle.empty()) break;
 
 		//find delta
-		double delta = inf;
+		T delta = inf;
 		int u = negative_cycle.back();
 		for (const auto &v : negative_cycle)
 		{
-			if (incrementCp[{u,v}] < delta) 
+			if (incrementCp.get_edges()[{u,v}] < delta) 
 			{
-				delta = incrementCp[{u,v}];
+				delta = incrementCp.get_edges()[{u,v}];
 			}
 			u = v;
 		}
@@ -348,59 +526,44 @@ graph<double> find_min_cost_flow(const graph<double> &Capacity, const graph<doub
 		u = negative_cycle.back();
 		for (const auto &v : negative_cycle)
 		{
-			if(incrementCost[{u,v}] < 0) Flow[{v,u}] -= delta;
-			else if (incrementCost[{u,v}] > 0) Flow[{u,v}] += delta;
+			if(incrementCost.get_edges()[{u,v}] < 0) this->Flow.get_edges()[{v,u}] -= delta;
+			else if (incrementCost.get_edges()[{u,v}] > 0) this->Flow.get_edges()[{u,v}] += delta;
 			u = v;
 		}
 	}
-	return Flow;
 }
 
 
-//reads graph from file and represents it as map that associates edges with weights
-//the file must be in csv format
-//columns: the first vertex of the edge, the second vertex of the edge, weight
-template<class T> //T - type of graph weights
-graph<T> read_graph(string filename)
+template<class T>
+T CostedNetwork<T>::calculate_cost() const
 {
-	ifstream file(filename);
-	char delimiter = ',';
-	graph<T> G;
-	string line;
-	while(getline(file, line))
-	{
-		stringstream stream_line(line);
-		string u;
-		string v;
-		getline(stream_line, u, delimiter);
-		getline(stream_line, v, delimiter);
-		//only the edge weight remains in the stream_line
-		//and it is written to map
-		stream_line >> G[{stoi(u), stoi(v)}];
-	}
-	file.close();
-	return G;
-}
-
-double calculate_cost(const graph<double> &Cost, const graph<double> &Flow)
-{
-	double cost = 0;
-	for (const auto &edge : Flow)
+	T cost = 0;
+	for (const auto &edge : this->Flow.get_edges())
 	{
 		int u = edge.first.first;
 		int v = edge.first.second;
-		double flow = edge.second;
-		cost += flow * Cost.at({u,v});
+		T flow = edge.second;
+		cost += flow * Cost.get_edges().at({u,v});
 	}
 	return cost;
 }
 
+
+template<class T>
+const Graph<T>& CostedNetwork<T>::get_Cost() const
+{
+	return Cost;
+}
+
+
 int main()
 {
-	graph<double> Capacity = read_graph<double>("Capacity.csv");
-	graph<double> Cost = read_graph<double>("Cost.csv");
-	graph<double> Flow = find_min_cost_flow(Capacity, Cost, 20);
-	print_graph(Flow);
-	cout << calculate_cost(Cost, Flow);
+	Graph<double> Capacity("Capacity.csv");
+	Graph<double> Cost("Cost.csv");
+	CostedNetwork<double> Net(Capacity, Cost);
+	Net.make_flow(20);
+	Net.minimize_cost();
+	cout << Net.get_Flow().get_str();
+	cout << '\n' << Net.calculate_cost();
 	return 0;
 }
